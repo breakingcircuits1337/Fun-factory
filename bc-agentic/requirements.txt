@@ -1,0 +1,48 @@
+# API framework
+fastapi==0.110.0
+uvicorn[standard]==0.27.1
+sse-starlette==1.8.2
+
+# Database
+sqlmodel==0.0.16
+sqlalchemy[asyncio]==2.0.27
+asyncpg==0.29.0
+psycopg2-binary==2.9.9
+alembic==1.13.1
+
+# Task queue
+celery==5.3.6
+redis==5.0.1
+
+# LLM / Agents
+litellm==1.27.6
+langgraph==0.0.40
+langchain==0.1.9
+langchain-core==0.1.27
+langchain-openai==0.0.8
+
+# Codebase indexing
+chromadb==0.4.22
+tree-sitter==0.21.3
+
+# Sandbox
+docker==7.0.0
+
+# GitHub / GitLab integrations
+PyGithub==2.2.0
+python-gitlab==4.4.0
+
+# HTTP client
+httpx==0.26.0
+
+# Security scanning (used inside sandbox image too)
+bandit==1.7.7
+
+# Settings
+pydantic-settings==2.2.1
+
+# Secrets (optional)
+hvac==2.1.0
+
+# Utils
+python-multipart==0.0.9
