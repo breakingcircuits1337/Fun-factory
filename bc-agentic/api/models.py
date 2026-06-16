@@ -27,6 +27,7 @@ class Task(SQLModel, table=True):
     token_usage: int = 0
     error: Optional[str] = None
     created_by: str  # user ID
+    github_issue_number: Optional[int] = None
 
 
 class TaskNode(SQLModel, table=True):

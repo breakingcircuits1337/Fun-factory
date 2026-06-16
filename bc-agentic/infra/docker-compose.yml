@@ -42,6 +42,21 @@ services:
     environment:
       ANONYMIZED_TELEMETRY: "false"
 
+  # ── Langfuse Observability ───────────────────────────────────────────────────
+  langfuse:
+    image: langfuse/langfuse:latest
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      DATABASE_URL: postgresql://bcagent:bcagent@postgres:5432/bcagentic
+      NEXTAUTH_URL: http://localhost:3001
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-change-me-langfuse-secret}
+      SALT: ${LANGFUSE_SALT:-change-me-langfuse-salt}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   # ── LiteLLM Proxy ───────────────────────────────────────────────────────────
   litellm:
     image: ghcr.io/berriai/litellm:main-latest
@@ -56,6 +71,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
 
   # ── FastAPI Orchestrator ─────────────────────────────────────────────────────
   api:
@@ -69,10 +86,15 @@ services:
       - ../.env
     environment:
       DATABASE_URL: postgresql+asyncpg://bcagent:bcagent@postgres:5432/bcagentic
+      LANGGRAPH_CHECKPOINTER_URL: postgresql://bcagent:bcagent@postgres:5432/bcagentic
       REDIS_URL: redis://redis:6379/0
       LITELLM_BASE_URL: http://litellm:4000
       CHROMA_HOST: chromadb
       CHROMA_PORT: 8000
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-http://langfuse:3000}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_ENABLED: ${LANGFUSE_ENABLED:-false}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - workspaces:/tmp/bc-agent-workspaces
@@ -93,10 +115,15 @@ services:
       - ../.env
     environment:
       DATABASE_URL: postgresql+asyncpg://bcagent:bcagent@postgres:5432/bcagentic
+      LANGGRAPH_CHECKPOINTER_URL: postgresql://bcagent:bcagent@postgres:5432/bcagentic
       REDIS_URL: redis://redis:6379/0
       LITELLM_BASE_URL: http://litellm:4000
       CHROMA_HOST: chromadb
       CHROMA_PORT: 8000
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-http://langfuse:3000}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_ENABLED: ${LANGFUSE_ENABLED:-false}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - workspaces:/tmp/bc-agent-workspaces
