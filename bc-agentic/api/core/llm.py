@@ -5,11 +5,7 @@ from api.settings import settings
 
 def get_llm_client(model: str | None = None, api_key: str | None = None) -> ChatOpenAI:
     """Return a LangChain LLM client pointed at the LiteLLM proxy."""
-    key = api_key or settings.LITELLM_MASTER_KEY
-    if not key:
-        raise RuntimeError(
-            "No LLM API key available. Set LITELLM_MASTER_KEY in your environment."
-        )
+    key = api_key or settings.LITELLM_MASTER_KEY or "sk-placeholder"
     return ChatOpenAI(
         model=model or settings.DEFAULT_MODEL,
         base_url=settings.LITELLM_BASE_URL,
