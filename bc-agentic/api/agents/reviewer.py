@@ -31,15 +31,24 @@ Output structured JSON only:
 async def review_diff(
     diff: str,
     task_description: str,
+    task_id: str = "",
     model: str = "claude-sonnet",
+    api_key: str | None = None,
 ) -> dict:
-    client = get_llm_client()
+    from api.core.observability import get_langfuse_callbacks
+    client = get_llm_client(api_key=api_key)
+    # Use structured message parts to avoid prompt injection from diff content
     messages = [
         SystemMessage(content=REVIEWER_SYSTEM),
-        HumanMessage(content=f"Task description: {task_description}\n\nDiff:\n```\n{diff}\n```"),
+        HumanMessage(content=[
+            {"type": "text", "text": f"Task description: {task_description}\n\nDiff to review:"},
+            {"type": "text", "text": diff},
+        ]),
     ]
 
-    response = await client.ainvoke(messages, model=model)
+    callbacks = get_langfuse_callbacks(task_id, "reviewer")
+    invoke_config = {"callbacks": callbacks} if callbacks else {}
+    response = await client.ainvoke(messages, config=invoke_config)
     content = response.content
 
     match = re.search(r"\{.*\}", content, re.DOTALL)
@@ -60,10 +69,14 @@ async def review_diff(
         }
 
 
-async def run_reviewer(task_id: str, task_description: str, model: str = "claude-sonnet") -> dict:
+async def run_reviewer(
+    task_id: str,
+    task_description: str,
+    model: str = "claude-sonnet",
+    api_key: str | None = None,
+) -> dict:
     from api.core.sandbox import exec_in_sandbox
 
-    # Get the git diff from the sandbox
     result = exec_in_sandbox(task_id, "cd /workspace && git diff HEAD~1 HEAD 2>/dev/null || git diff --cached")
     diff = result.get("stdout", "")
 
@@ -71,4 +84,4 @@ async def run_reviewer(task_id: str, task_description: str, model: str = "claude
         result = exec_in_sandbox(task_id, "cd /workspace && git show --stat HEAD 2>/dev/null")
         diff = result.get("stdout", "No diff available")
 
-    return await review_diff(diff, task_description, model)
+    return await review_diff(diff, task_description, task_id=task_id, model=model, api_key=api_key)

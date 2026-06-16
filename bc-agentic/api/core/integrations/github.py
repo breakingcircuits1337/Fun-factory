@@ -69,6 +69,47 @@ def _render_pr_body(task) -> str:
     return "\n".join(lines)
 
 
+def post_plan_comment(repo_full_name: str, issue_number: int, plan: list[dict]) -> int:
+    """Post implementation plan as GitHub issue comment. Returns comment ID."""
+    g = get_github_client()
+    repo = g.get_repo(repo_full_name)
+    issue = repo.get_issue(issue_number)
+    lines = [
+        "## BC-Agentic Implementation Plan",
+        "",
+        "Add the `bc-approved` label to approve and begin execution, or `bc-rejected` to cancel.",
+        "",
+    ]
+    for t in plan:
+        lines.append(f"- **{t.get('id', '?')}**: {t.get('description', '')}")
+        if t.get("files_likely_affected"):
+            lines.append(f"  - Files: {', '.join(t['files_likely_affected'])}")
+    comment = issue.create_comment("\n".join(lines))
+    return comment.id
+
+
+def poll_for_approval_label(
+    repo_full_name: str,
+    issue_number: int,
+    timeout: int = 3600,
+    interval: int = 15,
+) -> bool:
+    """Poll the issue for bc-approved/bc-rejected label. Returns True if approved."""
+    import time
+    g = get_github_client()
+    repo = g.get_repo(repo_full_name)
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        issue = repo.get_issue(issue_number)
+        labels = [label.name for label in issue.labels]
+        if "bc-approved" in labels:
+            return True
+        if "bc-rejected" in labels:
+            return False
+        time.sleep(interval)
+    return False
+
+
 def get_repo_full_name(repo_url: str) -> str:
     """Extract owner/repo from GitHub URL."""
     url = repo_url.rstrip("/").rstrip(".git")

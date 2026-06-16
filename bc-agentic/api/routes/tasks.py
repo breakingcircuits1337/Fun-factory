@@ -1,25 +1,19 @@
-import asyncio
 import json
-from typing import AsyncIterator
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import StreamingResponse
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 from pydantic import BaseModel
+import redis.asyncio as aioredis
 
 from api.models import Task, TaskStatus, TaskNode
 from api.settings import settings
 
 router = APIRouter()
 
-# In-memory SSE queues per task_id
-_sse_queues: dict[str, asyncio.Queue] = {}
 
-
-def get_or_create_queue(task_id: str) -> asyncio.Queue:
-    if task_id not in _sse_queues:
-        _sse_queues[task_id] = asyncio.Queue()
-    return _sse_queues[task_id]
+def _redis() -> aioredis.Redis:
+    return aioredis.from_url(settings.REDIS_URL, decode_responses=True)
 
 
 async def get_session():
@@ -35,6 +29,7 @@ class TaskCreate(BaseModel):
     repo_url: str
     model: str = "claude-sonnet"
     created_by: str = "anonymous"
+    github_issue_number: int | None = None
 
 
 class TaskApprove(BaseModel):
@@ -49,12 +44,17 @@ async def create_task(body: TaskCreate, session: AsyncSession = Depends(get_sess
         repo_url=body.repo_url,
         model_used=body.model,
         created_by=body.created_by,
+        github_issue_number=body.github_issue_number,
     )
     session.add(task)
     await session.commit()
     await session.refresh(task)
 
-    # Dispatch to Celery worker
+    from api.core.audit import write_audit
+    await write_audit(session, str(task.id), "api", "task_created",
+                      details={"goal": body.goal[:200], "repo": body.repo_url},
+                      model=body.model)
+
     from api.worker import run_task
     run_task.delay(task.id)
 
@@ -76,19 +76,30 @@ async def get_task_nodes(task_id: str, session: AsyncSession = Depends(get_sessi
 
 
 @router.get("/{task_id}/stream")
-async def stream_task(task_id: str):
-    queue = get_or_create_queue(task_id)
+async def stream_task(task_id: str, request: Request):
+    last_id = request.headers.get("Last-Event-ID", "0")
 
-    async def event_generator() -> AsyncIterator[str]:
-        while True:
-            try:
-                event = await asyncio.wait_for(queue.get(), timeout=30.0)
-                if event is None:
-                    yield "event: done\ndata: {}\n\n"
+    async def event_generator():
+        nonlocal last_id
+        r = _redis()
+        try:
+            while True:
+                if await request.is_disconnected():
                     break
-                yield f"data: {json.dumps(event)}\n\n"
-            except asyncio.TimeoutError:
-                yield "event: ping\ndata: {}\n\n"
+                entries = await r.xread({f"sse:{task_id}": last_id}, count=10, block=30000)
+                if not entries:
+                    yield "event: ping\ndata: {}\n\n"
+                    continue
+                for _stream, messages in entries:
+                    for msg_id, fields in messages:
+                        last_id = msg_id
+                        data = fields.get("data", "{}")
+                        event = json.loads(data)
+                        yield f"id: {msg_id}\ndata: {json.dumps(event)}\n\n"
+                        if event.get("type") == "done":
+                            return
+        finally:
+            await r.aclose()
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
@@ -103,8 +114,12 @@ async def approve_task(
     if task.status != TaskStatus.AWAITING_APPROVAL:
         raise HTTPException(status_code=400, detail="Task is not awaiting approval")
 
-    queue = get_or_create_queue(task_id)
-    await queue.put({"type": "approval", "approved": body.approved, "comment": body.comment})
+    r = _redis()
+    await r.rpush(
+        f"approval:{task_id}",
+        json.dumps({"approved": body.approved, "comment": body.comment}),
+    )
+    await r.aclose()
 
     if not body.approved:
         task.status = TaskStatus.CANCELLED
@@ -124,11 +139,11 @@ async def cancel_task(task_id: str, session: AsyncSession = Depends(get_session)
     session.add(task)
     await session.commit()
 
-    # Signal SSE stream to close
-    queue = get_or_create_queue(task_id)
-    await queue.put(None)
+    # Signal SSE stream to close via Redis
+    r = _redis()
+    await r.xadd(f"sse:{task_id}", {"data": json.dumps({"type": "done", "reason": "cancelled"})})
+    await r.aclose()
 
-    # Clean up sandbox if running
     try:
         from api.core.sandbox import destroy_sandbox
         destroy_sandbox(task_id)

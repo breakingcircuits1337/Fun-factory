@@ -7,7 +7,6 @@ sse-starlette==1.8.2
 sqlmodel==0.0.16
 sqlalchemy[asyncio]==2.0.27
 asyncpg==0.29.0
-psycopg2-binary==2.9.9
 alembic==1.13.1
 
 # Task queue
@@ -16,10 +15,12 @@ redis==5.0.1
 
 # LLM / Agents
 litellm==1.27.6
-langgraph==0.0.40
-langchain==0.1.9
-langchain-core==0.1.27
-langchain-openai==0.0.8
+langgraph==1.4.0
+langgraph-checkpoint-postgres==1.0.0
+langchain==0.3.0
+langchain-core==0.3.0
+langchain-openai==0.2.0
+psycopg[binary,pool]==3.2.0
 
 # Codebase indexing
 chromadb==0.4.22
@@ -43,6 +44,12 @@ pydantic-settings==2.2.1
 
 # Secrets (optional)
 hvac==2.1.0
+
+# Logging
+loguru==0.7.2
+
+# Observability
+langfuse==2.36.0
 
 # Utils
 python-multipart==0.0.9

@@ -1,7 +1,7 @@
 from api.core.sandbox import exec_in_sandbox
 
 
-async def run_janitor(task_id: str) -> dict:
+async def run_janitor(task_id: str, api_key: str | None = None) -> dict:
     """Run pre-merge quality gates: pytest, ruff, mypy, bandit."""
     results = {}
 
